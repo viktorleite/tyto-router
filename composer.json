@@ -1,0 +1,35 @@
+{
+    "name": "tyto/router",
+    "description": "Roteador minimalista de alta performance em PHP puro com suporte a atributos, middlewares e cache",
+    "license": "MIT",
+    "type": "library",
+    "keywords": ["router", "routing", "php", "attributes", "middleware", "tyto"],
+    "autoload": {
+        "psr-4": {
+            "Tyto\\Router\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tyto\\Router\\Tests\\": "tests/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Viktor Leite",
+            "email": "viktorleite.s@gmail.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "require": {
+        "php": ">=8.5"
+    },
+    "require-dev": {
+        "pestphp/pest": "5.x-dev"
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    }
+}
