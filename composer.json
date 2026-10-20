@@ -1,5 +1,5 @@
 {
-    "name": "tyto/router",
+    "name": "tyto-php/router",
     "description": "Roteador minimalista de alta performance em PHP puro com suporte a atributos, middlewares e cache",
     "license": "MIT",
     "type": "library",
