@@ -1,4 +1,3 @@
-
 # Documentação Oficial — Tyto Router (v0.0.1)
 
 O **Tyto Router** é uma biblioteca de roteamento para PHP 8.1+ de altíssima performance, projetada para arquiteturas orientadas a domínio corporativo. O seu principal foco é unir uma **experiência de desenvolvimento limpa e visual (DX)** — através de atributos nativos do PHP — com uma **velocidade extrema** e **segurança rigorosa por padrão**.
@@ -7,26 +6,23 @@ O **Tyto Router** é uma biblioteca de roteamento para PHP 8.1+ de altíssima pe
 
 ## Sumário
 
-1. [Filosofia do Projeto]()
-2. [Requisitos do Sistema]()
-3. [Instalação]()
-4. [Guia de Utilização (Quick Start)]()
-5. [Funcionalidades Principais]()
-* [Atributos HTTP (`#[Get]`, `#[Post]`, etc.)]()
-* [Parâmetros Dinâmicos e Nomeados]()
-* [Grupos de Rotas e Prefixos (`#[RouteGroup]`)]()
-* [Middlewares em Padrão Onion / Pipeline (`#[Middleware]`)]()
-* [Resolução Flexível de Handlers]()
-
-
-6. [Segurança e Confiabilidade]()
-* [Proteção contra ReDOS]()
-* [Sanitização de URI]()
-* [Prevenção de Path Traversal]()
-
-
-7. [Otimização de Performance: Cache de Rotas em Ficheiro]()
-8. [Tratamento de Exceções Baseado na SPL]()
+1. [Filosofia do Projeto](#filosofia-do-projeto)
+2. [Requisitos do Sistema](#requisitos-do-sistema)
+3. [Instalação](#instalação)
+4. [Guia de Utilização (Quick Start)](#guia-de-utilização-quick-start)
+5. [Funcionalidades Principais](#funcionalidades-principais)
+   - [Atributos HTTP (`#[Get]`, `#[Post]`, etc.)](#atributos-http)
+   - [Parâmetros Dinâmicos e Nomeados](#parâmetros-dinâmicos-e-nomeados)
+   - [Grupos de Rotas e Prefixos (`#[RouteGroup]`)](#grupos-de-rotas-e-prefixos-routegroup)
+   - [Middlewares em Padrão Onion / Pipeline (`#[Middleware]`)](#middlewares-em-padrão-onion--pipeline-middleware)
+   - [Injeção do Tyto HTTP (`Request` & `Response`)](#injeção-do-tyto-http-request--response)
+   - [Resolução Flexível de Handlers](#resolução-flexível-de-handlers)
+6. [Segurança e Confiabilidade](#segurança-e-confiabilidade)
+   - [Proteção contra ReDOS](#1-proteção-contra-redos-regular-expression-denial-of-service)
+   - [Sanitização de URI](#2-sanitização-e-tratamento-de-uri)
+   - [Prevenção de Path Traversal](#3-prevenção-de-path-traversal)
+7. [Otimização de Performance: Cache de Rotas em Ficheiro](#otimização-de-performance-cache-de-rotas-em-ficheiro)
+8. [Tratamento de Exceções Baseado na SPL](#tratamento-de-exceções-baseado-na-spl)
 
 ---
 
@@ -37,7 +33,7 @@ Em frameworks tradicionais, a verificação de rotas e anotações utilizando a 
 O Tyto Router resolve isso dividindo o ciclo de vida em dois momentos:
 
 1. **Build / Desenvolvimento:** Os controllers são analisados via Reflection apenas quando necessário (ou na compilação do cache).
-2. **Produção:** O array de rotas compilado é lido diretamente de um ficheiro estático em cache, eliminando o overhead de reflexão e garantindo respostas incrivelmente rápidas.
+2. **Produção:** O array de rotas compilado é lido diretamente de um ficheiro estático em cache, eliminando o overhead de reflexão e garantindo respostas incrivelmente rápidas (abaixo de 50ms).
 
 ---
 
@@ -50,18 +46,17 @@ O Tyto Router resolve isso dividindo o ciclo de vida em dois momentos:
 
 ## Instalação
 
-Adicione o pacote ao seu projeto via Composer (ou inclua-o localmente):
+Adicione o pacote ao seu projeto via Composer (ou inclua-o via repositório local):
 
 ```bash
-composer require tyto/router
-
+composer require tyto-php/router
 ```
 
 ---
 
 ## Guia de Utilização (Quick Start)
 
-### 1. Criando um Controller com Atributos
+### 1. Criando um Controller com Atributos e Injeção do Tyto HTTP
 
 ```php
 <?php
@@ -72,28 +67,41 @@ namespace App\Controllers;
 
 use Tyto\Router\Routing\Attributes\Get;
 use Tyto\Router\Routing\Attributes\Post;
+use Tyto\Http\Request;
+use Tyto\Http\Response;
 
 final class BookController
 {
     #[Get('/books')]
-    public function index(): string
+    public function index(): Response
     {
-        return 'Listagem de Livros';
+        return Response::json([
+            'data' => [
+                ['id' => 1, 'title' => 'Clean Code'],
+                ['id' => 2, 'title' => 'Domain-Driven Design']
+            ]
+        ]);
     }
 
     #[Get('/books/{id}')]
-    public function show(string $id): string
+    public function show(string $id): Response
     {
-        return "Detalhes do Livro ID: {$id}";
+        return Response::json([
+            'data' => ['id' => $id, 'title' => "Livro ID: {$id}"]
+        ]);
     }
 
     #[Post('/books')]
-    public function store(): string
+    public function store(Request $request): Response
     {
-        return 'Livro criado com sucesso!';
+        $title = $request->input('title');
+
+        return Response::json([
+            'message' => 'Livro criado com sucesso!',
+            'title' => $title
+        ], 201);
     }
 }
-
 ```
 
 ### 2. Despachando as Rotas na sua Aplicação (`public/index.php`)
@@ -107,25 +115,33 @@ require __DIR__ . '/../vendor/autoload.php';
 
 use Tyto\Router\Routing\RouteCollector;
 use Tyto\Router\Routing\Router;
+use Tyto\Http\Request;
+use Tyto\Http\Response;
 use App\Controllers\BookController;
 
-// 1. Coleta e compila os controllers
+// 1. Captura a requisição via Tyto HTTP
+$request = Request::createFromGlobals();
+
+// 2. Coleta e compila os controllers
 $collector = new RouteCollector();
 $collector->addController(BookController::class);
 $routes = $collector->compile();
 
-// 2. Instancia o Router com o mapa de rotas
+// 3. Instancia o Router com o mapa de rotas
 $router = new Router($routes);
 
 try {
-    // 3. Executa o despacho com base no método HTTP e URI atual
-    $response = $router->dispatch($_SERVER['REQUEST_METHOD'], $_SERVER['REQUEST_URI']);
-    echo $response;
-} catch (\Exception $e) {
-    http_response_code(404);
-    echo $e->getMessage();
-}
+    // 4. Executa o despacho passando a URI, Método e a instância da Request
+    $response = $router->dispatch($request->getMethod(), $request->getUri(), $request);
 
+    if ($response instanceof Response) {
+        $response->send();
+    } else {
+        echo $response;
+    }
+} catch (\Exception $e) {
+    (new Response($e->getMessage(), 404))->send();
+}
 ```
 
 ---
@@ -147,13 +163,11 @@ O Tyto Router suporta os principais verbos HTTP de forma nativa por meio de atri
 Parâmetros dinâmicos são declarados entre chaves `{param}`. Eles são convertidos internamente em grupos de captura nomeados seguros:
 
 ```php
-#[Get('/users/{userId}/posts/{postId slicer}')] // Exemplo de parâmetro dinâmico
 #[Get('/categories/{slug}')]
-public function showCategory(string $slug): string
+public function showCategory(string $slug): Response
 {
-    return "Categoria: {$slug}";
+    return Response::json(['category' => $slug]);
 }
-
 ```
 
 ### Grupos de Rotas e Prefixos (`#[RouteGroup]`)
@@ -169,18 +183,18 @@ namespace App\Controllers;
 
 use Tyto\Router\Routing\Attributes\Get;
 use Tyto\Router\Routing\Attributes\RouteGroup;
+use Tyto\Http\Response;
 use App\Middlewares\JwtAuthMiddleware;
 
 #[RouteGroup(prefix: '/api/v1', middlewares: [JwtAuthMiddleware::class])]
 final class ApiUserController
 {
     #[Get('/profile')]
-    public function profile(): string
+    public function profile(): Response
     {
-        return 'Perfil do Usuário Autenticado';
+        return Response::json(['user' => 'Perfil do Usuário Autenticado']);
     }
 }
-
 ```
 
 ### Middlewares em Padrão Onion / Pipeline (`#[Middleware]`)
@@ -195,21 +209,22 @@ declare(strict_types=1);
 namespace App\Middlewares;
 
 use Tyto\Router\Routing\Contracts\MiddlewareInterface;
+use Tyto\Http\Request;
+use Tyto\Http\Response;
 
 final class AuthMiddleware implements MiddlewareInterface
 {
     public function handle(mixed $request, callable $next): mixed
     {
-        // Lógica de pré-processamento
-        if (!$request) {
-            return 'Acesso Negado';
+        // Exemplo de pré-processamento verificando token HTTP
+        if ($request instanceof Request && !$request->header('Authorization')) {
+            return Response::json(['error' => 'Não autorizado'], 401);
         }
 
         // Passa para o próximo middleware ou controller
         return $next($request);
     }
 }
-
 ```
 
 Aplicando o middleware a uma rota específica:
@@ -217,18 +232,21 @@ Aplicando o middleware a uma rota específica:
 ```php
 #[Get('/admin/dashboard')]
 #[Middleware(AuthMiddleware::class)]
-public function dashboard(): string
+public function dashboard(): Response
 {
-    return 'Painel Administrativo';
+    return Response::json(['dashboard' => 'Painel Administrativo']);
 }
-
 ```
+
+### Injeção do Tyto HTTP (`Request` & `Response`)
+
+O Tyto Router resolve e injeta automaticamente instâncias de `Tyto\Http\Request` quando declaradas como dependências na assinatura dos métodos dos controllers ou closures.
 
 ### Resolução Flexível de Handlers
 
 O método dispatcher do Tyto Router suporta múltiplos tipos de retornos e chamadas:
 
-* **Funções Anônimas (Closures):** `fn () => 'Olá'`
+* **Funções Anônimas (Closures):** `fn (Request $req) => Response::json(['ok' => true])`
 * **Arrays de Classes e Métodos:** `[HomeController::class, 'index']`
 * **Strings Clássicas:** `'App\Controllers\HomeController@index'`
 * **Objetos Instanciados / Factories:** `[new CustomFactory(), 'handle']`
@@ -253,7 +271,6 @@ Parâmetros dinâmicos extraídos da URI passam por decodificação (`urldecode`
 
 ```php
 throw new SecurityViolationException('Security violation: Path traversal sequence detected.');
-
 ```
 
 ---
@@ -268,6 +285,8 @@ Para garantir tempos de resposta inferiores a **50ms**, utilize a classe `RouteC
 use Tyto\Router\Routing\RouteCollector;
 use Tyto\Router\Routing\RouteCache;
 use Tyto\Router\Routing\Router;
+use Tyto\Http\Request;
+use Tyto\Http\Response;
 use App\Controllers\BookController;
 
 $cacheFile = __DIR__ . '/../storage/cache/routes.php';
@@ -285,9 +304,14 @@ if ($routes === null) {
     RouteCache::store($cacheFile, $routes);
 }
 
+$request = Request::createFromGlobals();
 $router = new Router($routes);
-$response = $router->dispatch($_SERVER['REQUEST_METHOD'], $_SERVER['REQUEST_URI']);
 
+$response = $router->dispatch($request->getMethod(), $request->getUri(), $request);
+
+if ($response instanceof Response) {
+    $response->send();
+}
 ```
 
 ---

@@ -79,75 +79,80 @@ final class Router
         array $middlewares,
         mixed $request
     ): mixed {
-        $destination = function () use ($handler, $action, $params) {
+        $destination = function () use ($handler, $action, $params, $request) {
+            $executeHandler = function ($object, string $methodName) use ($params, $request) {
+                $reflection = new \ReflectionMethod($object, $methodName);
+                $args = [];
+
+                foreach ($reflection->getParameters() as $parameter) {
+                    $paramType = $parameter->getType();
+                    $paramName = $parameter->getName();
+
+                    if ($paramType instanceof \ReflectionNamedType && !$paramType->isBuiltin()) {
+                        $typeName = $paramType->getName();
+                        if ($request !== null && ($request instanceof $typeName || is_a($request, $typeName, true))) {
+                            $args[] = $request;
+                            continue;
+                        }
+                    }
+                    if (array_key_exists($paramName, $params)) {
+                        $value = $params[$paramName];
+                        // TODO: verificação do tipo esperado pelo método (usando ReflectionParameter)
+                        if ($paramType instanceof \ReflectionNamedType && $paramType->getName() === 'int') {
+                            $value = (int) $value;
+                        } elseif ($paramType instanceof \ReflectionNamedType && $paramType->getName() === 'float') {
+                            $value = (float) $value;
+                        }
+                        
+                        $args[] = $value;
+                        continue;
+                    }
+
+                    if (!empty($params)) {
+                        $args[] = array_shift($params);
+                        continue;
+                    }
+
+                    if ($parameter->isDefaultValueAvailable()) {
+                        $args[] = $parameter->getDefaultValue();
+                        break;
+                    }
+                }
+
+                return $object->{$methodName}(...$args);
+            };
 
             if (is_array($handler) && isset($handler[0]) && is_string($handler[0]) && str_contains($handler[0], '@')) {
                 [$controllerClass, $methodName] = explode('@', $handler[0], 2);
-
-                if (!class_exists($controllerClass)) {
-                    throw new ControllerNotFoundException("Controller [{$controllerClass}] not found.");
-                }
-
-                $controllerClassInstance = new $controllerClass();
-
-                if (!method_exists($controllerClassInstance, $methodName)) {
-                    throw new ActionNotFoundInController("Action [{$methodName}] not found in controller [{$controllerClass}]");
-                }
-
-                return $controllerClassInstance->{$methodName}(...array_values($params));
+                $this->validateControllerAndMethod($controllerClass, $methodName);
+                return $executeHandler(new $controllerClass(), $methodName);
             }
 
             if (is_array($handler) && isset($handler[0]) && is_object($handler[0])) {
                 [$object, $methodName] = $handler;
-
                 if (!method_exists($object, $methodName)) {
                     throw new MethodNotFoundException("Method [{$methodName}] not found in object.");
                 }
-
-                return $object->{$methodName}(...array_values($params));
-            }
-
-            if (is_array($handler)) {
-                throw new InvalidRouteHandlerException("Invalid route handler structure provided inside array.");
-            }
-
-            if (
-                $handler instanceof Closure
-                || is_callable($handler)
-                && !is_string($handler)
-            ) {
-                return $handler(...array_values($params));
+                return $executeHandler($object, $methodName);
             }
 
             if (is_string($handler) && str_contains($handler, '@')) {
                 [$controllerClass, $methodName] = explode('@', $handler, 2);
-
-                if (!class_exists($controllerClass)) {
-                    throw new ControllerNotFoundException("Controller [{$controllerClass}] not found.");
-                }
-
-                $controllerClassInstance = new $controllerClass();
-
-                if (!method_exists($controllerClassInstance, $methodName)) {
-                    throw new ActionNotFoundInController("Action [{$methodName}] not found in controller [{$controllerClass}]");
-                }
-
-                return $controllerClassInstance->{$methodName}(...array_values($params));
+                $this->validateControllerAndMethod($controllerClass, $methodName);
+                return $executeHandler(new $controllerClass(), $methodName);
             }
 
             $controllerClass = $handler;
-
             if (!is_string($controllerClass) || !class_exists($controllerClass)) {
                 throw new ControllerNotFoundException("Controller [{$controllerClass}] not found or invalid handler type.");
             }
 
             $controllerClassInstance = new $controllerClass();
-
             if ($action === null || !method_exists($controllerClassInstance, $action)) {
                 throw new ActionNotFoundInController("Action [{$action}] not found in controller [{$controllerClass}]");
             }
 
-            return $controllerClassInstance->{$action}(...array_values($params));
+            return $executeHandler($controllerClassInstance, $action);
         };
 
         $pipeline = array_reduce(
@@ -171,5 +176,16 @@ final class Router
         );
 
         return $pipeline();
+    }
+
+    private function validateControllerAndMethod(string $controllerClass, string $methodName): void
+    {
+        if (!class_exists($controllerClass)) {
+            throw new ControllerNotFoundException("Controller [{$controllerClass}] not found.");
+        }
+        $controllerClassInstance = new $controllerClass();
+        if (!method_exists($controllerClassInstance, $methodName)) {
+            throw new ActionNotFoundInController("Action [{$methodName}] not found in controller [{$controllerClass}]");
+        }
     }
 }

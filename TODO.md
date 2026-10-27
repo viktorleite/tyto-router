@@ -1,5 +1,9 @@
 A Fazer
-(Nenhum item no momento)
+[x] Adicionar Suporte a Injeção de Obejtos nos metodos do controller
+
+[x] Conversão Automática de Tipos em Parâmetros de Rota: Permitir que o roteador converta automaticamente parâmetros dinâmicos (como {id}) para o tipo especificado na assinatura do método do controller (ex: int, float, etc.).
+
+[x] Correção de tipagem de parâmetros dinâmicos no Controller.
 
 Fazendo
 (Nenhum item no momento)
